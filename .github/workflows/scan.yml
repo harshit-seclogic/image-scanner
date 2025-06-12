@@ -5,6 +5,26 @@ on:
     branches: [ '*' ]
   push:
     branches: [ '*' ]
+  workflow_dispatch:  # Enables manual triggering from GitHub UI
+    inputs:
+      branch:
+        description: 'Branch to scan (leave empty for current branch)'
+        required: false
+        default: ''
+      scan_type:
+        description: 'Type of security scan'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - quick
+          - secrets-only
+      notify_teams:
+        description: 'Send notifications to all configured channels'
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   security-scan:
@@ -13,6 +33,9 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        # Use specified branch if provided, otherwise use default
+        ref: ${{ github.event.inputs.branch || github.ref }}
       
     - name: Send Pipeline Metadata and Handle Security Scan
       env:
@@ -26,8 +49,22 @@ jobs:
         EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         SECURITY_API_URL: ${{ secrets.SECURITY_API_URL }}
         TENANT_ID: ${{ secrets.TENANT_ID }}
+        # Manual trigger inputs
+        MANUAL_TRIGGER: ${{ github.event_name == 'workflow_dispatch' }}
+        SCAN_TYPE: ${{ github.event.inputs.scan_type || 'full' }}
+        NOTIFY_TEAMS: ${{ github.event.inputs.notify_teams || 'true' }}
       run: |
         echo "Preparing payload..."
+        
+        # Display manual trigger information if applicable
+        if [ "$MANUAL_TRIGGER" = "true" ]; then
+          echo "=== MANUAL TRIGGER DETECTED ==="
+          echo "Scan Type: $SCAN_TYPE"
+          echo "Notify Teams: $NOTIFY_TEAMS"
+          echo "Target Branch: ${{ github.event.inputs.branch || 'current branch' }}"
+          echo "Triggered by: ${{ github.actor }}"
+          echo "==============================="
+        fi
         
         # Default security API URL if not set in secrets
         SECURITY_API_URL="${SECURITY_API_URL:-https://bdac-14-140-115-125.ngrok-free.app /ci}"
@@ -43,6 +80,8 @@ jobs:
           "tenant": "'$TENANT_ID'",
           "CI": true,
           "platform": "github",
+          "manual_trigger": '$MANUAL_TRIGGER',
+          "scan_type": "'$SCAN_TYPE'",
           "github": {
             "action": "${{ github.action }}",
             "actor": "${{ github.actor }}",
@@ -147,6 +186,12 @@ jobs:
           local message="$1"
           local status="$2"
           
+          # Check if notifications are enabled for manual triggers
+          if [ "$MANUAL_TRIGGER" = "true" ] && [ "$NOTIFY_TEAMS" = "false" ]; then
+            echo "⚠️ Notifications disabled for manual trigger"
+            return
+          fi
+          
           if [ -n "$SLACK_WEBHOOK" ]; then
             echo "Sending Slack notification..."
             curl -X POST "$SLACK_WEBHOOK" \
@@ -163,6 +208,12 @@ jobs:
         send_google_chat_notification() {
           local message="$1"
           local status="$2"
+          
+          # Check if notifications are enabled for manual triggers
+          if [ "$MANUAL_TRIGGER" = "true" ] && [ "$NOTIFY_TEAMS" = "false" ]; then
+            echo "⚠️ Notifications disabled for manual trigger"
+            return
+          fi
           
           if [ -n "$GOOGLE_CHAT_WEBHOOK" ]; then
             echo "Sending Google Chat notification..."
@@ -181,6 +232,12 @@ jobs:
           local message="$1"
           local status="$2"
           local color=""
+          
+          # Check if notifications are enabled for manual triggers
+          if [ "$MANUAL_TRIGGER" = "true" ] && [ "$NOTIFY_TEAMS" = "false" ]; then
+            echo "⚠️ Notifications disabled for manual trigger"
+            return
+          fi
           
           case "$status" in
             "success") color="Good" ;;
@@ -206,6 +263,8 @@ jobs:
                         {\"name\": \"PR Number\", \"value\": \"#$GITHUB_PR_NUMBER\"},
                         {\"name\": \"Run Number\", \"value\": \"#$GITHUB_RUN_NUMBER\"},
                         {\"name\": \"Actor\", \"value\": \"$GITHUB_ACTOR\"},
+                        {\"name\": \"Trigger\", \"value\": \"${{ github.event_name }}\"},
+                        {\"name\": \"Scan Type\", \"value\": \"$SCAN_TYPE\"},
                         {\"name\": \"Status\", \"value\": \"${api_status:-'N/A'}\"},
                         {\"name\": \"High/Critical\", \"value\": \"${high_critical:-0}\"},
                         {\"name\": \"Total Issues\", \"value\": \"${total_issues:-0}\"}
@@ -225,6 +284,12 @@ jobs:
           local message="$2"
           local status="$3"
           
+          # Check if notifications are enabled for manual triggers
+          if [ "$MANUAL_TRIGGER" = "true" ] && [ "$NOTIFY_TEAMS" = "false" ]; then
+            echo "⚠️ Notifications disabled for manual trigger"
+            return
+          fi
+          
           if [ -n "$EMAIL_API_KEY" ] && [ -n "$EMAIL_TO" ] && [ -n "$EMAIL_FROM" ]; then
             echo "Sending email notification..."
             
@@ -241,6 +306,7 @@ jobs:
             .status-failure { color: #dc3545; }
             .status-info { color: #17a2b8; }
             .details { background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; }
+            .manual-trigger { background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; border-radius: 5px; margin: 10px 0; }
           </style>
         </head>
         <body>
@@ -249,12 +315,15 @@ jobs:
           </div>
           <div class="content">
             <h3>Repository: $GITHUB_REPOSITORY</h3>
+            $(if [ "$MANUAL_TRIGGER" = "true" ]; then echo '<div class="manual-trigger"><strong>Manual Trigger:</strong> This scan was triggered manually by $GITHUB_ACTOR</div>'; fi)
             <div class="details">
               <p><strong>Branch:</strong> $GITHUB_REF_NAME</p>
               <p><strong>PR Number:</strong> #$GITHUB_PR_NUMBER</p>
               <p><strong>Run Number:</strong> #$GITHUB_RUN_NUMBER</p>
               <p><strong>Commit:</strong> $GITHUB_SHA</p>
               <p><strong>Actor:</strong> $GITHUB_ACTOR</p>
+              <p><strong>Trigger:</strong> ${{ github.event_name }}</p>
+              <p><strong>Scan Type:</strong> $SCAN_TYPE</p>
               <p><strong>Status:</strong> <span class="status-$status">${api_status:-'N/A'}</span></p>
               <p><strong>Scan ID:</strong> ${scan_id:-'N/A'}</p>
             </div>
@@ -294,12 +363,18 @@ jobs:
           fi
         }
         
+        # Create trigger-specific message prefix
+        TRIGGER_PREFIX=""
+        if [ "$MANUAL_TRIGGER" = "true" ]; then
+          TRIGGER_PREFIX="🔧 *MANUAL SCAN* ($SCAN_TYPE)\\n"
+        fi
+        
         # Handle both successful API calls (200-299) and status 404 with valid JSON response
         if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ] || [ "$http_code" = "404" ]; then
           if echo "$response_body" | grep -q "pass" || [ "$api_status" = "pass" ]; then
             echo "✅ Pipeline PASSED - Sending SUCCESS notifications to all platforms"
             
-            SUCCESS_MESSAGE="✅ *SECURITY SCAN PASSED* ✅\\n\\n📊 *Repository:* ${{ github.repository }}\\n🔀 *Branch:* ${{ github.ref_name }}\\n🔗 *PR:* #${{ github.event.number }}\\n🚀 *Run:* #${{ github.run_number }}\\n👤 *Actor:* ${{ github.actor }}\\n📝 *Commit:* \`${{ github.sha }}\`\\n\\n🔒 *SECURITY RESULTS*\\n✅ *Status:* ${api_status:-'pass'}\\n🎯 *Result:* ${api_reason:-'All security checks passed'}\\n🔍 *Scan ID:* \`${scan_id:-'N/A'}\`\\n🆔 *Pipeline UUID:* \`${pipeline_uuid:-'N/A'}\`\\n\\n📈 *VULNERABILITY SUMMARY*\\n🔴 *High/Critical:* ${high_critical:-0}\\n🟡 *Medium:* ${medium:-0}\\n🟢 *Low:* ${low:-0}\\n🔑 *Secrets:* ${secrets:-0}\\n📊 *Total Issues:* ${total_issues:-0}\\n\\n💡 *API RECOMMENDATIONS*\\n${recommendations:-'• No critical actions required'}\\n\\n📡 *HTTP Code:* $http_code\\n⏰ *Time:* $(date -u)\\n\\n🎊 *Great job!* No critical security issues found!"
+            SUCCESS_MESSAGE="${TRIGGER_PREFIX}✅ *SECURITY SCAN PASSED* ✅\\n\\n📊 *Repository:* ${{ github.repository }}\\n🔀 *Branch:* ${{ github.ref_name }}\\n🔗 *PR:* #${{ github.event.number }}\\n🚀 *Run:* #${{ github.run_number }}\\n👤 *Actor:* ${{ github.actor }}\\n📝 *Commit:* \`${{ github.sha }}\`\\n🎯 *Trigger:* ${{ github.event_name }}\\n\\n🔒 *SECURITY RESULTS*\\n✅ *Status:* ${api_status:-'pass'}\\n🎯 *Result:* ${api_reason:-'All security checks passed'}\\n🔍 *Scan ID:* \`${scan_id:-'N/A'}\`\\n🆔 *Pipeline UUID:* \`${pipeline_uuid:-'N/A'}\`\\n\\n📈 *VULNERABILITY SUMMARY*\\n🔴 *High/Critical:* ${high_critical:-0}\\n🟡 *Medium:* ${medium:-0}\\n🟢 *Low:* ${low:-0}\\n🔑 *Secrets:* ${secrets:-0}\\n📊 *Total Issues:* ${total_issues:-0}\\n\\n💡 *API RECOMMENDATIONS*\\n${recommendations:-'• No critical actions required'}\\n\\n📡 *HTTP Code:* $http_code\\n⏰ *Time:* $(date -u)\\n\\n🎊 *Great job!* No critical security issues found!"
             
             # Send to all platforms
             send_slack_notification "$SUCCESS_MESSAGE" "success"
@@ -312,7 +387,7 @@ jobs:
           elif echo "$response_body" | grep -q "fail" || [ "$api_status" = "fail" ]; then
             echo "❌ Pipeline FAILED - Sending FAILURE notifications to all platforms"
             
-            FAILURE_MESSAGE="🚨 *SECURITY SCAN FAILED* 🚨\\n\\n📊 *Repository:* ${{ github.repository }}\\n🔀 *Branch:* ${{ github.ref_name }}\\n🔗 *PR:* #${{ github.event.number }}\\n🚀 *Run:* #${{ github.run_number }}\\n👤 *Actor:* ${{ github.actor }}\\n📝 *Commit:* \`${{ github.sha }}\`\\n\\n🔒 *SECURITY RESULTS*\\n❌ *Status:* ${api_status:-'fail'}\\n🚨 *Issue:* ${api_reason:-'Security vulnerabilities detected'}\\n🔍 *Scan ID:* \`${scan_id:-'N/A'}\`\\n🆔 *Pipeline UUID:* \`${pipeline_uuid:-'N/A'}\`\\n\\n📈 *VULNERABILITY SUMMARY*\\n🔴 *High/Critical:* ${high_critical:-0} ⚠️\\n🟡 *Medium:* ${medium:-0}\\n🟢 *Low:* ${low:-0}\\n🔑 *Secrets:* ${secrets:-0}\\n📊 *Total Issues:* ${total_issues:-0}\\n\\n💡 *API RECOMMENDATIONS*\\n${recommendations:-'• Review scan results and fix vulnerabilities'}\\n\\n📡 *HTTP Code:* $http_code\\n⏰ *Time:* $(date -u)\\n\\n🚨 *URGENT ACTION REQUIRED!*"
+            FAILURE_MESSAGE="${TRIGGER_PREFIX}🚨 *SECURITY SCAN FAILED* 🚨\\n\\n📊 *Repository:* ${{ github.repository }}\\n🔀 *Branch:* ${{ github.ref_name }}\\n🔗 *PR:* #${{ github.event.number }}\\n🚀 *Run:* #${{ github.run_number }}\\n👤 *Actor:* ${{ github.actor }}\\n📝 *Commit:* \`${{ github.sha }}\`\\n🎯 *Trigger:* ${{ github.event_name }}\\n\\n🔒 *SECURITY RESULTS*\\n❌ *Status:* ${api_status:-'fail'}\\n🚨 *Issue:* ${api_reason:-'Security vulnerabilities detected'}\\n🔍 *Scan ID:* \`${scan_id:-'N/A'}\`\\n🆔 *Pipeline UUID:* \`${pipeline_uuid:-'N/A'}\`\\n\\n📈 *VULNERABILITY SUMMARY*\\n🔴 *High/Critical:* ${high_critical:-0} ⚠️\\n🟡 *Medium:* ${medium:-0}\\n🟢 *Low:* ${low:-0}\\n🔑 *Secrets:* ${secrets:-0}\\n📊 *Total Issues:* ${total_issues:-0}\\n\\n💡 *API RECOMMENDATIONS*\\n${recommendations:-'• Review scan results and fix vulnerabilities'}\\n\\n📡 *HTTP Code:* $http_code\\n⏰ *Time:* $(date -u)\\n\\n🚨 *URGENT ACTION REQUIRED!*"
             
             # Send to all platforms
             send_slack_notification "$FAILURE_MESSAGE" "failure"
@@ -325,7 +400,7 @@ jobs:
           else
             echo "⚠️ Pipeline completed - Sending INFO notifications to all platforms"
             
-            INFO_MESSAGE="ℹ️ *SECURITY SCAN INFO* ℹ️\\n\\n📊 *Repository:* ${{ github.repository }}\\n🔀 *Branch:* ${{ github.ref_name }}\\n🔗 *PR:* #${{ github.event.number }}\\n🚀 *Run:* #${{ github.run_number }}\\n👤 *Actor:* ${{ github.actor }}\\n\\n🔒 *SECURITY RESULTS*\\n📡 *Status:* ${api_status:-'Unknown'}\\n📄 *Response:* ${api_reason:-'No explicit pass/fail status found'}\\n🔍 *Scan ID:* \`${scan_id:-'N/A'}\`\\n\\n📈 *VULNERABILITY SUMMARY*\\n🔴 *High/Critical:* ${high_critical:-'N/A'}\\n🟡 *Medium:* ${medium:-'N/A'}\\n🟢 *Low:* ${low:-'N/A'}\\n🔑 *Secrets:* ${secrets:-'N/A'}\\n📊 *Total Issues:* ${total_issues:-'N/A'}\\n\\n📊 *HTTP Code:* $http_code\\n⏰ *Time:* $(date -u)\\n\\n💡 *Note:* Security scan completed but status unclear - please review logs"
+            INFO_MESSAGE="${TRIGGER_PREFIX}ℹ️ *SECURITY SCAN INFO* ℹ️\\n\\n📊 *Repository:* ${{ github.repository }}\\n🔀 *Branch:* ${{ github.ref_name }}\\n🔗 *PR:* #${{ github.event.number }}\\n🚀 *Run:* #${{ github.run_number }}\\n👤 *Actor:* ${{ github.actor }}\\n🎯 *Trigger:* ${{ github.event_name }}\\n\\n🔒 *SECURITY RESULTS*\\n📡 *Status:* ${api_status:-'Unknown'}\\n📄 *Response:* ${api_reason:-'No explicit pass/fail status found'}\\n🔍 *Scan ID:* \`${scan_id:-'N/A'}\`\\n\\n📈 *VULNERABILITY SUMMARY*\\n🔴 *High/Critical:* ${high_critical:-'N/A'}\\n🟡 *Medium:* ${medium:-'N/A'}\\n🟢 *Low:* ${low:-'N/A'}\\n🔑 *Secrets:* ${secrets:-'N/A'}\\n📊 *Total Issues:* ${total_issues:-'N/A'}\\n\\n📊 *HTTP Code:* $http_code\\n⏰ *Time:* $(date -u)\\n\\n💡 *Note:* Security scan completed but status unclear - please review logs"
             
             # Send to all platforms
             send_slack_notification "$INFO_MESSAGE" "info"
@@ -339,7 +414,7 @@ jobs:
         else
           echo "❌ Pipeline FAILED - Sending ERROR notifications to all platforms"
           
-          ERROR_MESSAGE="🚨 *SECURITY API ERROR* 🚨\\n\\n📊 *Repository:* ${{ github.repository }}\\n🔀 *Branch:* ${{ github.ref_name }}\\n🔗 *PR:* #${{ github.event.number }}\\n🚀 *Run:* #${{ github.run_number }}\\n👤 *Actor:* ${{ github.actor }}\\n\\n🔴 *HTTP Error:* $http_code\\n📡 *API Status:* ${api_status:-'API Connection Error'}\\n🔧 *Issue:* ${api_reason:-'Security API returned HTTP error'}\\n🔍 *Scan ID:* \`${scan_id:-'N/A'}\`\\n⏰ *Time:* $(date -u)\\n\\n💡 *ACTION REQUIRED:*\\n🔧 Check security API server status and connectivity\\n📋 Review workflow logs for detailed error information\\n🔄 Retry the workflow once API issues are resolved"
+          ERROR_MESSAGE="${TRIGGER_PREFIX}🚨 *SECURITY API ERROR* 🚨\\n\\n📊 *Repository:* ${{ github.repository }}\\n🔀 *Branch:* ${{ github.ref_name }}\\n🔗 *PR:* #${{ github.event.number }}\\n🚀 *Run:* #${{ github.run_number }}\\n👤 *Actor:* ${{ github.actor }}\\n🎯 *Trigger:* ${{ github.event_name }}\\n\\n🔴 *HTTP Error:* $http_code\\n📡 *API Status:* ${api_status:-'API Connection Error'}\\n🔧 *Issue:* ${api_reason:-'Security API returned HTTP error'}\\n🔍 *Scan ID:* \`${scan_id:-'N/A'}\`\\n⏰ *Time:* $(date -u)\\n\\n💡 *ACTION REQUIRED:*\\n🔧 Check security API server status and connectivity\\n📋 Review workflow logs for detailed error information\\n🔄 Retry the workflow once API issues are resolved"
           
           # Send to all platforms
           send_slack_notification "$ERROR_MESSAGE" "error"

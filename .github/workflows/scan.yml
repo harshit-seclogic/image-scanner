@@ -18,7 +18,7 @@ jobs:
       env:
         # Notification webhook URLs - Hardcoded values
         SLACK_WEBHOOK: "https://hooks.slack.com/services/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"
-        GOOGLE_CHAT_WEBHOOK: "https://chat.googleapis.com/v1/spaces/AAQAeRUvlOU/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=_34nAZI5OgKH-ps5cBFA9bPtX3tVc-e5gYGiCzb2WK8"
+      
         TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
         EMAIL_API_URL: ${{ secrets.EMAIL_API_URL }}
         EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}

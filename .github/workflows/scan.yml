@@ -16,9 +16,9 @@ jobs:
       
     - name: Send Pipeline Metadata and Handle Security Scan
       env:
-        # Notification webhook URLs - Hardcoded values
-        SLACK_WEBHOOK: "https://hooks.slack.com/services/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"
-      
+        # Notification webhook URLs - From repository secrets
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
         TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
         EMAIL_API_URL: ${{ secrets.EMAIL_API_URL }}
         EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}
@@ -26,6 +26,10 @@ jobs:
         EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         SECURITY_API_URL: ${{ secrets.SECURITY_API_URL }}
         TENANT_ID: ${{ secrets.TENANT_ID }}
+        # Manual trigger inputs
+        MANUAL_TRIGGER: ${{ github.event_name == 'workflow_dispatch' }}
+        SCAN_TYPE: ${{ github.event.inputs.scan_type || 'full' }}
+        NOTIFY_TEAMS: ${{ github.event.inputs.notify_teams || 'true' }}
       run: |
         echo "Preparing payload..."
         

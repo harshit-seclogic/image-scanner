@@ -30,7 +30,7 @@ jobs:
         echo "Preparing payload..."
         
         # Default security API URL if not set in secrets
-        SECURITY_API_URL="${SECURITY_API_URL:-https://7e43-34-93-21-162.ngrok-free.app/ci}"
+        SECURITY_API_URL="${SECURITY_API_URL:-https://bdac-14-140-115-125.ngrok-free.app /ci}"
         TENANT_ID="${TENANT_ID:-55}"
         
         # Create comprehensive GitHub payload using the full context

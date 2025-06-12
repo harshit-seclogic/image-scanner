@@ -17,7 +17,7 @@ jobs:
     - name: Send Pipeline Metadata and Handle Security Scan
       env:
         # Notification webhook URLs - Hardcoded values
-        SLACK_WEBHOOK: "https://hooks.slack.com/services/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"
+        SLACK_WEBHOOK: "https://hooks.slack.com/services/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"
       
         TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
         EMAIL_API_URL: ${{ secrets.EMAIL_API_URL }}

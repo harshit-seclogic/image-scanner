@@ -51,7 +51,7 @@ jobs:
         GITHUB_GRAPHQL_URL="${{ github.graphql_url }}"
         
         # Default security API URL if not set in secrets
-        SECURITY_API_URL="${SECURITY_API_URL:-https://de72-34-93-67-88.ngrok-free.app/ci}"
+        SECURITY_API_URL="${SECURITY_API_URL:-https://7e43-34-93-21-162.ngrok-free.app/ci}"
         TENANT_ID="${TENANT_ID:-55}"
         
         # Send metadata to security API

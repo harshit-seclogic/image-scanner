@@ -17,8 +17,15 @@ jobs:
     - name: Send Pipeline Metadata and Handle Security Scan
       env:
         # Notification webhook URLs - From repository secrets
-        SLACK_WEBHOOK: "https://hooks.slack.com/services/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"
-        GOOGLE_CHAT_WEBHOOK: "https://chat.googleapis.com/v1/spaces/AAQAeRUvlOU/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=_34nAZI5OgKH-ps5cBFA9bPtX3tVc-e5gYGiCzb2WK8"
+        SLACK_WEBHOOK: ""
+        GOOGLE_CHAT_WEBHOOK: "https://chat.googleapis.com/v1/spaces/AAQAeRUvlOU/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7XUfeQDkGhQa95Ftg18UXnEQVlGnyr6Dr-9kCSQZwIk"
+        TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
+        EMAIL_API_URL: ${{ secrets.EMAIL_API_URL }}
+        EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}
+        EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        SECURITY_API_URL: ${{ secrets.SECURITY_API_URL }}
+        TENANT_ID: ${{ secrets.TENANT_ID }}
         # Manual trigger inputs
         MANUAL_TRIGGER: ${{ github.event_name == 'workflow_dispatch' }}
         SCAN_TYPE: ${{ github.event.inputs.scan_type || 'full' }}
@@ -26,11 +33,15 @@ jobs:
       run: |
         echo "Preparing payload..."
         
+        # Default security API URL if not set in secrets
+        SECURITY_API_URL="${SECURITY_API_URL:-https://64e3-34-93-67-88.ngrok-free.app/ci}"
+        TENANT_ID="${TENANT_ID:-55}"
+        
         # Create comprehensive GitHub payload using the full context
         echo "Creating GitHub payload with full context..."
         
         # Send complete GitHub payload to security API
-        response=$(curl -s -w "%{http_code}" -X POST "https://64e3-34-93-67-88.ngrok-free.app" \
+        response=$(curl -s -w "%{http_code}" -X POST "$SECURITY_API_URL" \
         -H "Content-Type: application/json" \
         -d '{
           "tenant": "'$TENANT_ID'",
